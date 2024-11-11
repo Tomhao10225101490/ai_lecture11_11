@@ -26,6 +26,12 @@ class EssayHistory(db.Model):
         db.Index('idx_grade_created', 'grade', 'created_at'),
         db.Index('idx_score_example', 'total_score', 'is_example'),
     )
+    
+    # 添加与评论的关系，设置级联删除
+    comments = db.relationship('Comment', 
+                             backref='essay', 
+                             cascade='all, delete-orphan',
+                             primaryjoin="and_(EssayHistory.id==Comment.essay_id, Comment.parent_id==None)")
 
     def to_dict(self):
         return {

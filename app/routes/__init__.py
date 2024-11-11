@@ -273,14 +273,45 @@ def register_routes(app):
     def delete_history(history_id):
         try:
             history = EssayHistory.query.get_or_404(history_id)
-            db.session.delete(history)
-            db.session.commit()
             
-            return jsonify({
-                'success': True,
-                'message': '删除成功'
-            })
-            
+            # 开始事务
+            db.session.begin_nested()
+            try:
+                # 1. 首先删除所有点赞
+                CommentLike.query.filter(
+                    CommentLike.comment_id.in_(
+                        db.session.query(Comment.id).filter_by(essay_id=history_id)
+                    )
+                ).delete(synchronize_session=False)
+                
+                # 2. 删除所有回复评论（parent_id 不为 None 的评论）
+                Comment.query.filter(
+                    Comment.essay_id == history_id,
+                    Comment.parent_id.isnot(None)
+                ).delete(synchronize_session=False)
+                
+                # 3. 删除所有主评论（parent_id 为 None 的评论）
+                Comment.query.filter(
+                    Comment.essay_id == history_id,
+                    Comment.parent_id.is_(None)
+                ).delete(synchronize_session=False)
+                
+                # 4. 最后删除历史记录
+                db.session.delete(history)
+                
+                # 提交事务
+                db.session.commit()
+                
+                return jsonify({
+                    'success': True,
+                    'message': '删除成功'
+                })
+                
+            except Exception as e:
+                # 如果出错，回滚事务
+                db.session.rollback()
+                raise e
+                
         except Exception as e:
             print(f"Error in delete_history: {e}")
             return jsonify({
